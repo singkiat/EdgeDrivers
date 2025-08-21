@@ -204,6 +204,25 @@ function defaults.update_data(datapoints)
   end
 end
 
+-- Helper function to check if a command matches a datapoint definition
+local function command_matches_datapoint(command, def)
+  -- Standard capability matching
+  if command.capability == def.capability then
+    return true
+  end
+  
+  -- Multi-command mapping for Moes curtain - multiple capabilities can map to same datapoint
+  if def.multi_command_mapping then
+    for _, supported_capability in ipairs(def.multi_command_mapping) do
+      if command.capability == supported_capability then
+        return true
+      end
+    end
+  end
+  
+  return false
+end
+
 local function send_command(datapoints, device, command, value_fn)
   -- log.info("send_command")
   if device.parent_assigned_child_key == nil then
@@ -212,7 +231,7 @@ local function send_command(datapoints, device, command, value_fn)
       local group = device:get_endpoint_for_component_id(command.component)
       for dpid, def in pairs(datapoints) do
         -- log.info("Datapoint 1", def.capability, command.capability, dpid, def.group, group)
-        if group == def.group and command.capability == def.capability then
+        if group == def.group and command_matches_datapoint(command, def) then
           local cmd = def:command_handler(dpid, command, device, datapoints)
           if cmd then
             send_event(device, { cmd }, def.custom_command, def.cluster)
@@ -225,7 +244,7 @@ local function send_command(datapoints, device, command, value_fn)
       local segments = {}
       for dpid, def in pairs(datapoints) do
         -- log.info("Datapoint 2", def.capability, command.capability, dpid, def.group)
-        if command.capability == def.capability then
+        if command_matches_datapoint(command, def) then
           local cmd = def:command_handler(dpid, command, device, datapoints)
           if cmd then
             local tcmd = def.custom_command or "DataRequest"
@@ -248,7 +267,7 @@ local function send_command(datapoints, device, command, value_fn)
     local group = tonumber(device.parent_assigned_child_key, 16)
     local segments = {}
     for dpid, def in pairs(datapoints) do
-      if group == def.group and command.capability == def.capability then
+      if group == def.group and command_matches_datapoint(command, def) then
         local cmd = def:command_handler(dpid, command, device, datapoints)
         if cmd then
           local tcmd = def.custom_command or "DataRequest"

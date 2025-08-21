@@ -961,6 +961,100 @@ for k,v in pairs(defaults) do
     end
   })
 end
+-- ========================================================================================
+-- CUSTOM IMPLEMENTATIONS: Moes Smart Curtain - Multi-Command Single Datapoint Handler
+-- ========================================================================================
+
+-- Moes Smart Curtain - Multiple capabilities map to single DP 9
+-- Supports: windowShade (open/close/pause), windowShadeLevel (setLevel), windowShadePreset (presetPosition)
+defaults.moesCurtainMultiCommand = {
+  capability = "windowShade", -- Primary capability for reporting
+  attribute = "windowShade",
+  rate_name = "rate",
+  rate = 100,
+  
+  -- Define which capabilities this handler supports
+  multi_command_mapping = {
+    "windowShade",
+    "windowShadeLevel", 
+    "windowShadePreset"
+  },
+  
+  -- Smart command handler that processes different command types
+  command_handler = function (self, dpid, command, device, datapoints)
+    local pref = get_child_or_parent(device, self.group).preferences
+    local value_to_send
+    
+    -- Handle different capability commands
+    if command.capability == "windowShade" then
+      if command.command == "open" then
+        mylogs.log(device, "info", "🔹 Moes Open Command - sending 0% to DP " .. dpid)
+        value_to_send = 0
+      elseif command.command == "close" then
+        mylogs.log(device, "info", "🔹 Moes Close Command - sending 100% to DP " .. dpid)
+        value_to_send = 100
+      elseif command.command == "pause" then
+        mylogs.log(device, "info", "🔹 Moes Pause Command - stopping curtain at DP " .. dpid)
+        -- Get current position or send 50% as stop command
+        local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 50
+        value_to_send = current_level
+      end
+    elseif command.capability == "windowShadeLevel" then
+      value_to_send = to_number(command.args.level)
+      mylogs.log(device, "info", "🔹 Moes SetLevel Command - sending " .. value_to_send .. "% to DP " .. dpid)
+    elseif command.capability == "windowShadePreset" then
+      value_to_send = pref.presetPosition or 50
+      mylogs.log(device, "info", "🔹 Moes Preset Command - sending " .. value_to_send .. "% to DP " .. dpid)
+    end
+    
+    if value_to_send then
+      return { math.abs(self:get_dp(dpid, device)), tuya_types.Int32(value_to_send) }
+    end
+    return nil
+  end,
+  
+  -- Handle the to_zigbee conversion (fallback, shouldn't be called with custom command_handler)
+  to_zigbee = function (self, value, device)
+    mylogs.log(device, "info", "🔹 Moes Fallback to_zigbee - sending " .. value .. "% to DP 9")
+    return tuya_types.Int32(to_number(value))
+  end,
+  
+  -- Handle incoming datapoint values and emit appropriate events
+  create_event = function (self, value, device, force_child, datapoints)
+    local level_value = to_number(value)
+    
+    -- Emit windowShadeLevel event
+    local level_event = capabilities.windowShadeLevel.shadeLevel(level_value)
+    device:emit_event(level_event)
+    
+    -- Emit windowShade state event based on level
+    local shade_state
+    if level_value <= 0 then
+      shade_state = "open"
+    elseif level_value >= 100 then
+      shade_state = "closed" 
+    else
+      shade_state = "partially open"
+    end
+    
+    local shade_event = capabilities.windowShade.windowShade(shade_state)
+    return shade_event
+  end,
+  
+  -- Convert commands to values for reporting
+  command_to_value = function (self, command, device)
+    if command.capability == "windowShade" then
+      return command.command == "open" and "open" or command.command == "pause" and "partially open" or "closed"
+    elseif command.capability == "windowShadeLevel" then
+      return command.args.level
+    elseif command.capability == "windowShadePreset" then
+      local pref = get_child_or_parent(device, self.group).preferences
+      return pref.presetPosition or 50
+    end
+    return 50 -- Default fallback
+  end,
+}
+
 defaults.generic = default_generic
 
 return defaults

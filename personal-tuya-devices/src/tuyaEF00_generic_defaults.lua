@@ -103,6 +103,8 @@ local child_types_to_profile = {
   windowShadeDatapoints = "child-windowShade-v1",
   windowShadeLevDatapoints = "child-windowShadeLevel-v1",
   windowShadePreDatapoints = "child-windowShadePreset-v1",
+  -- NEW: Multi-command profile for Moes curtain (uses existing moes-smart-curtain profile)
+  moesCurtainDatapoints = "moes-smart-curtain",
   enumerationDatapoints = "child-enum-v1",
   valueDatapoints = "child-value-v1",
   stringDatapoints = "child-string-v1",

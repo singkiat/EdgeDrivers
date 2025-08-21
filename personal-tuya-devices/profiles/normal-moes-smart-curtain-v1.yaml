@@ -1,0 +1,60 @@
+name: normal-moes-smart-curtain-v1
+components:
+  - id: main
+    label: Curtain
+    capabilities:
+      - id: windowShade
+        version: 1
+        config:
+          values:
+            - key: "{{enumCommands}}"
+              enabledValues:
+                - close
+                - open
+                - pause
+      - id: windowShadeLevel
+        version: 1
+      - id: windowShadePreset
+        version: 1
+      - id: signalStrength
+        version: 1
+      - id: refresh
+        version: 1
+      - id: valleyboard16460.debug
+        version: 1
+    categories:
+      - name: WindowShade
+preferences:
+  - name: moesCurtainDatapoints
+    title: Moes Curtain Datapoint
+    description: Datapoint ID for Moes curtain control (typically 9)
+    required: false
+    preferenceType: string
+    definition:
+      default: "9"
+  - name: presetPosition
+    title: Preset Position
+    description: Position percentage for preset button (0=Open, 100=Closed)
+    required: false
+    preferenceType: integer
+    definition:
+      minimum: 0
+      maximum: 100
+      default: 50
+  - name: reverse
+    title: Reverse Open/Close
+    description: Reverse the meaning of open and close commands
+    required: false
+    preferenceType: boolean
+    definition:
+      default: false
+  - name: motorDirection
+    title: Motor Direction
+    description: Control physical motor rotation direction
+    required: false
+    preferenceType: enumeration
+    definition:
+      options:
+        forward: Forward
+        reverse: Reverse
+      default: forward
