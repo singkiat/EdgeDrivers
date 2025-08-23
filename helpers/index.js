@@ -51,7 +51,7 @@ function update_models_zigbee(path = ".", version) {
 
   const profilePrefixes = versionModel.includedProfiles.map((value) => ({
     value,
-    regex: new RegExp("^" + value + "-[^-]+-v\\d+$"),
+    regex: new RegExp("^" + value + "-.+-v\\d+$"),
   }));
 
   fs.cpSync(path + "/capabilities", tmp + "/capabilities", {

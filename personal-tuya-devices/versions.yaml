@@ -10,7 +10,6 @@
     - generic
     - child
     - normal
-    - normal-moes-smart-curtain-v1
 - id: generic
   includeSubdrivers:
     - debug
@@ -41,7 +40,6 @@
     - info
     - settings
     - signalStrength
-    - moesCurtain
     - genericEF00
     - genericDimmer
     - genericSwitch

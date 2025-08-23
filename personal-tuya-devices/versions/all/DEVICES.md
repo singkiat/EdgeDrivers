@@ -4,10 +4,13 @@
 | TS0001  | \_TZ3210_dse8ogfy_wip | Momentary                | normal-momentary-v3          |   1, 101, 102, 103, 104, 105, 106, 107                     |
 | TS0049  | \_TZ3210_0jxeoadc     | Irrigation               | normal-irrigation-v1         | 101, 115, 111                                              |
 | TS0225  | \_TZE200_hl0ss9oa     | Presence Sensor          | normal-presenceSensor-v5     |   1,  12,  20,  24, 102, 105                               |
+| TS0601  | \_TZE200_1n2kyphz     | Multi Switch             | normal-multi-switch-v4       |   1,   2,   3,   4                                         |
+| TS0601  | \_TZE200_2hf7x9n3     | Multi Switch             | normal-multi-switch-v3       |   1,   2,   3                                              |
 | TS0601  | \_TZE200_3i3exuay     | Window Shade             | normal-windowShade-v1        |   1,   2                                                   |
 | TS0601  | \_TZE200_3towulqd     | Presence Sensor          | normal-presenceSensor-v3     |   1,   4,   9,  10,  12                                    |
 | TS0601  | \_TZE200_4hbx5cvx     | Thermostat               | normal-thermostat-v3         |   1,   2,  16,  24, 104, 101                               |
 | TS0601  | \_TZE200_8ygsuhe1     | Air Quality              | normal-airQuality-v1         |   2,  18,  19,  21,  22                                    |
+| TS0601  | \_TZE200_9mahtqtg     | Multi Switch             | normal-multi-switch-v6       |   1,   2,   3,   4,   5,   6                               |
 | TS0601  | \_TZE200_a7sghmms     | Irrigation               | normal-irrigation-v2         |   1,   2, 108, 104                                         |
 | TS0601  | \_TZE200_a8sdabtg     | Thermostat               | normal-temphumi-v1           |   1,   2                                                   |
 | TS0601  | \_TZE200_akjefhj5     | Irrigation               | normal-irrigation-v1         |   1,   7,  11                                              |
@@ -20,8 +23,11 @@
 | TS0601  | \_TZE200_cxu0jkjk     | Window Shade             | normal-windowShade-v1        |   1,   2,   3,   7                                         |
 | TS0601  | \_TZE200_d0ypnbvn     | Smart Valve              | normal-valve-v1              |   1                                                        |
 | TS0601  | \_TZE200_d0yu2xgi     | Alarm                    | normal-alarm-v2              | 104, 106, 105, 116, 102, 103                               |
+| TS0601  | \_TZE200_dfxkcots     | Dimmer                   | normal-single-dimmer-v1      |   1,   2,   3                                              |
 | TS0601  | \_TZE200_dwcarsat     | Air Quality              | normal-airQuality-v2         |   2,  18,  19,  20,  21,  22                               |
+| TS0601  | \_TZE200_e3oitdyu     | Multi Dimmer             | normal-multi-dimmer-v2       |   1,   2,   3,   4,   7,   8,   9,  10                     |
 | TS0601  | \_TZE200_gd4rvykv     | Thermostat               | normal-thermostat-v4         | 101, 103, 102                                              |
+| TS0601  | \_TZE200_go3tvswy     | Multi Switch             | normal-multi-switch-v3       |   1,   2,   3                                              |
 | TS0601  | \_TZE200_h4cgnbzg     | Thermostat               | normal-thermostat-v4         | 101, 103, 102                                              |
 | TS0601  | \_TZE200_ikvncluo     | Presence Sensor          | normal-presenceSensor-v1     |   1,   2,   3,   4, 101, 102, 104                          |
 | TS0601  | \_TZE200_locansqn     | LCD T+H Sensor           | normal-temphumibatt-v1       |   1,   2,   4                                              |
@@ -33,12 +39,15 @@
 | TS0601  | \_TZE200_myd45weu     | Soil sensor              | normal-temphumibatt-v1       |   5,   3,  15                                              |
 | TS0601  | \_TZE200_nklqjk62     | Garage Door              | normal-garageDoor-v1         |   1,   3                                                   |
 | TS0601  | \_TZE200_nw1r9hp6     | Window Shade             | normal-windowShade-v2        |   1,   2,  13                                              |
+| TS0601  | \_TZE200_p0gzbqct     | Dimmer                   | normal-single-dimmer-v1      |   1,   2,   3                                              |
 | TS0601  | \_TZE200_pay2byax     | Contact Sensor           | normal-contactSensor-v2      |   1, 101,   2                                              |
 | TS0601  | \_TZE200_qoy0ekbd     | Thermostat               | normal-temphumi-v1           |   1,   2                                                   |
+| TS0601  | \_TZE200_r731zlxk     | Multi Switch             | normal-multi-switch-v6       |   1,   2,   3,   4,   5,   6                               |
 | TS0601  | \_TZE200_rjxqso4a     | Carbon Monoxide Detector | normal-coDetector-v1         |   1,   2,   9,  15,  16                                    |
 | TS0601  | \_TZE200_sh1btabb     | Irrigation               | normal-irrigation-v2         |   1,   2, 108, 104                                         |
 | TS0601  | \_TZE200_t1blo2bj     | Alarm                    | normal-alarm-v1              |  13,   5,  15,  21,   7                                    |
 | TS0601  | \_TZE200_v6ossqfy     | Presence Sensor          | normal-presenceSensor-v2     |   1                                                        |
+| TS0601  | \_TZE200_ves1ycwx     | Power Meter              | normal-multi-powerMeter-v1   |   6,   1,   7,   8                                         |
 | TS0601  | \_TZE200_wfxuhoea     | Garage Door              | normal-garageDoor-v1         |   1,   3                                                   |
 | TS0601  | \_TZE200_whkgqxse     | LCD T+H Sensor           | normal-temphumibatt-v1       |   1,   2,   4                                              |
 | TS0601  | \_TZE200_yjjdcqsq     | Thermostat               | normal-temphumibatt-v1       |   1,   2,   3                                              |
