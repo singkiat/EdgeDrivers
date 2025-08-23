@@ -72,6 +72,15 @@ preferences:
       minimum: 1
       maximum: 255
       default: 8
+  - name: dpWindowShadeMain01
+    title: WindowShade Control DP
+    description: Datapoint for window shade commands (open/close/pause - typically 1)
+    required: false
+    preferenceType: integer
+    definition:
+      minimum: 1
+      maximum: 255
+      default: 1
 metadata:
   deviceType: Blind
   ocfDeviceType: oic.d.blind

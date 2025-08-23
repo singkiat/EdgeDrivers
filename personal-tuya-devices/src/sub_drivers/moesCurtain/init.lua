@@ -85,8 +85,10 @@ local template = {
     capabilities["valleyboard16460.debug"],
   },
   
-  -- Capability handlers with logging - route commands to model's datapoint processing
+  -- EXPERIMENT: DP 1 for windowShade commands works! Keep DP 1 for open/close/pause
+  -- Restore setShadeLevel override for DP 9
   capability_handlers = {
+    --[[ COMMENTED OUT: DP 1 experiment success - let model handle windowShade via DP 1
     [capabilities.windowShade.ID] = {
       [capabilities.windowShade.commands.open.NAME] = function(driver, device, command)
         myutils.log(device, "info", "🔹 CAPABILITY HANDLER: Moes Curtain Open Command - routing to model DP 9")
@@ -122,11 +124,13 @@ local template = {
         send_model_command(device, command)
       end,
     },
+    --]] -- End of windowShade comment block
     
+    -- RESTORE: setShadeLevel override for DP 9 (DP 1 experiment successful for windowShade)
     [capabilities.windowShadeLevel.ID] = {
       [capabilities.windowShadeLevel.commands.setShadeLevel.NAME] = function(driver, device, command)
         local level = command.args.shadeLevel or 50
-        myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Moes SetLevel Command:", level, "% - bypassing model, sending directly to moesCurtainMultiCommand DP")
+        myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Moes SetLevel Command:", level, "% - sending to DP 9")
         
         -- Get model configuration to find the moesCurtainMultiCommand datapoint
         local utils = require("utils")
@@ -183,14 +187,20 @@ local template = {
         local commands = require("commands")
         local handler = commands.moesCurtainMultiCommand({group = target_group})
         
-        -- Call command_handler for the discovered datapoint
-        local cmd = handler:command_handler(target_dpid, command, device)
-        if cmd then
-          myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Sending DataRequest to DP", target_dpid, "with value:", cmd[2])
-          local clusters = require("st.zigbee.zcl.clusters")
-          device:send(clusters.TuyaEF00.commands.DataRequest(device, {{cmd[1], cmd[2]}}))
+        -- Force the command to use the correct DP by calling to_zigbee directly
+        local value = handler:command_to_value(command, device)
+        if value then
+          myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Generated value for DP", target_dpid, ":", value)
+          local zigbee_value = handler:to_zigbee(value, device)
+          if zigbee_value then
+            myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Sending setShadeLevel to DP", target_dpid, "with zigbee value:", zigbee_value)
+            local clusters = require("st.zigbee.zcl.clusters")
+            device:send(clusters.TuyaEF00.commands.DataRequest(device, {{target_dpid, zigbee_value}}))
+          else
+            myutils.log(device, "error", "🔹 DIRECT OVERRIDE: Failed to convert value to zigbee format")
+          end
         else
-          myutils.log(device, "error", "🔹 DIRECT OVERRIDE: Failed to generate command for DP", target_dpid)
+          myutils.log(device, "error", "🔹 DIRECT OVERRIDE: Failed to generate setShadeLevel value")
         end
       end,
     },
@@ -220,6 +230,7 @@ local template = {
         device:send(zcl_clusters.TuyaEF00.commands.DataQuery(device))
       end,
     },
+
   },
   
   -- Note: Zigbee handlers are intentionally NOT overridden here to preserve

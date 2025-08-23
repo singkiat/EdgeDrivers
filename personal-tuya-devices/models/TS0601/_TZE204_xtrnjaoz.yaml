@@ -2,6 +2,11 @@ deviceLabel: Moes Smart Curtain Motor
 profiles:
   - normal_moes_smart_curtain_v1
 datapoints:
+  # DP 1 - EXPERIMENT: Test windowShade commands (open/close/pause) on DP 1
+  - id: 1
+    command: windowShade  # Standard windowShade handler for open/close/pause
+    base:
+      group: 1
   # DP 8 - Status reporting ONLY (position feedback from device) - no command mapping
   - id: 8
     command: windowShadeLevelStatus  # Different command name so it won't match outgoing commands

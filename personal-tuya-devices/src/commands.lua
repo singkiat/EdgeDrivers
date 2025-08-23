@@ -1014,6 +1014,15 @@ defaults.moesCurtainMultiCommand = {
     "windowShadePreset"   -- presetPosition commands
   },
   
+  -- OVERRIDE: get_dp to return actual DP for this handler (not preference lookup)
+  get_dp = function(self, dpid, device)
+    -- Always return the actual dpid passed to this handler
+    -- This fixes the issue where get_dp was looking up dpWindowShadeMain01 preference (DP 1)
+    -- instead of using the actual DP this handler is assigned to (DP 9)
+    log.info("🔹 Moes get_dp override: returning actual DP", dpid, "instead of preference lookup")
+    return dpid
+  end,
+  
   -- Uses standard command_handler from default_generic
   -- Logic moved to command_to_value and to_zigbee following standard pattern
   

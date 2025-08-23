@@ -54,7 +54,7 @@
 | TS0601  | \_TZE204_sxm7l9xa     | Presence Sensor          | normal-presenceSensor-v1     | 105, 106, 108, 107, 111, 110, 104                          |
 | TS0601  | \_TZE204_t1blo2bj     | Alarm                    | normal-alarm-v1              |  13,   5,  15,  21,   7                                    |
 | TS0601  | \_TZE204_vqaajp1a     | Smart Valve              | normal-valve-v2              |   1,  20,  21,  22,  23                                    |
-| TS0601  | \_TZE204_xtrnjaoz     | Moes Smart Curtain Motor | normal-moes-smart-curtain-v1 |   8,   9                                                   |
+| TS0601  | \_TZE204_xtrnjaoz     | Moes Smart Curtain Motor | normal-moes-smart-curtain-v1 |   1,   8,   9                                              |
 | TS0601  | \_TZE204_ztc6ggyl     | Presence Sensor          | normal-presenceSensor-v1     |   1,   2,   3,   4, 101, 102, 104                          |
 
 - This is a list of predefined devices, but the driver is NOT limited to those.<br />It should work with any device that expose EF00 cluster.
