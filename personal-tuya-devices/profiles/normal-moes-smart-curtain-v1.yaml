@@ -46,23 +46,6 @@ preferences:
         info: Info, Warn, Error
         debug: Debug, Info, Warn, Error
       default: error
-  - name: moesCurtainDatapoints
-    title: Moes Curtain Datapoint
-    description: Datapoint ID for Moes curtain control (typically 9)
-    required: false
-    preferenceType: string
-    definition:
-      stringType: text
-      default: "9"
-  - preferenceId: presetPosition
-    explicit: true
-  - name: reverse
-    title: Reverse Direction
-    description: Reverse the curtain direction calculation (swap open/close)
-    required: false
-    preferenceType: boolean
-    definition:
-      default: false
   - name: dpWindowShadeLevelMain01
     title: WindowShade Level DP
     description: Datapoint for window shade level reporting (typically 8)
@@ -81,6 +64,23 @@ preferences:
       minimum: 1
       maximum: 255
       default: 1
+  - name: moesCurtainDatapoints
+    title: Moes Curtain Datapoint
+    description: Datapoint ID for Moes curtain control (typically 9)
+    required: false
+    preferenceType: string
+    definition:
+      stringType: text
+      default: "9"
+  - preferenceId: presetPosition
+    explicit: true
+  - name: reverse
+    title: Reverse Direction
+    description: Reverse the curtain direction calculation (swap open/close)
+    required: false
+    preferenceType: boolean
+    definition:
+      default: false
 metadata:
   deviceType: Blind
   ocfDeviceType: oic.d.blind
