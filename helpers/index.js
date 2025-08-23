@@ -66,6 +66,11 @@ function update_models_zigbee(path = ".", version) {
     recursive: true,
   });
 
+  // Copy config.yaml file
+  if (fs.existsSync(path + "/config.yaml")) {
+    fs.cpSync(path + "/config.yaml", tmp + "/config.yaml");
+  }
+
   fs.cpSync(path + "/profiles", tmp + "/profiles", {
     recursive: true,
     filter: (src) => {
@@ -106,7 +111,7 @@ function update_models_zigbee(path = ".", version) {
         return;
       }
       let deviceProfileName = obj.profiles[0].replace(/_/g, "-");
-      if (!profilePrefixes.some(({ regex }) => regex.test(deviceProfileName))) {
+      if (!profilePrefixes.some(({ value, regex }) => value === deviceProfileName || regex.test(deviceProfileName))) {
         return;
       }
 

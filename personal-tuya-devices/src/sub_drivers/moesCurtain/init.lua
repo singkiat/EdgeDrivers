@@ -1,10 +1,42 @@
--- Check if device has normal_moes_smart_curtain_v1 profile
-if myutils.is_profile(device, "normal_moes_smart_curtain_v1") thencl_global_commands = require "st.zigbee.zcl.global_commands"
+local log = require "log"
+local capabilities = require "st.capabilities"
+local zcl_clusters = require "st.zigbee.zcl.clusters"  
+local zcl_global_commands = require "st.zigbee.zcl.global_commands"
 local utils = require "st.utils"
 local commands = require "commands"
 local myutils = require "utils"
 
 local tuyaEF00_defaults = require "tuyaEF00_defaults"
+local tuyaEF00_model_defaults = require "tuyaEF00_model_defaults"
+
+-- Helper function to get model datapoints and send command  
+local function send_model_command(device, command)
+  myutils.log(device, "info", "🔹 STEP 1: Routing command to model datapoint handler")
+  myutils.log(device, "info", "🔹 STEP 2: Device Model:", device:get_model(), "Manufacturer:", device:get_manufacturer())
+  myutils.log(device, "info", "🔹 STEP 3: Command:", command.capability, command.command, "Component:", command.component)
+  
+  -- Get the driver instance from the device
+  local driver = device:get_parent_device() and device:get_parent_device().driver or device.driver
+  myutils.log(device, "info", "🔹 STEP 4: Got driver:", driver and "SUCCESS" or "FAILED")
+  
+  -- Try-catch the model handler call to see what's failing
+  local success, error_msg = pcall(function()
+    myutils.log(device, "info", "🔹 STEP 5: About to call tuyaEF00_model_defaults.capability_handler")
+    tuyaEF00_model_defaults.capability_handler(driver, device, command)
+    myutils.log(device, "info", "🔹 STEP 6: Model handler call completed")
+  end)
+  
+  if not success then
+    myutils.log(device, "error", "🔹 ERROR: Model handler failed:", error_msg)
+  else
+    myutils.log(device, "info", "🔹 STEP 7: Command sent to model - should see DataRequest if successful")
+  end
+end
+
+-- Helper function for logging only - simplified to avoid any metatable issues
+local function log_moes_configuration(device)
+  myutils.log(device, "info", "🔹 Moes Curtain configured - using model datapoints")
+end
 
 -- Moes Curtain Sub-Driver
 -- Handles devices that require multiple capabilities to map to single datapoint 9
@@ -53,41 +85,131 @@ local template = {
     capabilities["valleyboard16460.debug"],
   },
   
-  -- Override capability handlers to use multi-command system
+  -- Capability handlers with logging - route commands to model's datapoint processing
   capability_handlers = {
     [capabilities.windowShade.ID] = {
       [capabilities.windowShade.commands.open.NAME] = function(driver, device, command)
-        myutils.log(device, "info", "🔹 Moes Curtain Open Command")
-        local datapoints = get_moes_datapoints(device)
-        tuyaEF00_defaults.capability_handler(datapoints)(driver, device, command)
+        myutils.log(device, "info", "🔹 CAPABILITY HANDLER: Moes Curtain Open Command - routing to model DP 9")
+        myutils.log(device, "info", "🔹 CAPABILITY HANDLER: About to call send_model_command for open")
+        
+        local success, error_msg = pcall(function()
+          send_model_command(device, command)
+        end)
+        
+        if not success then
+          myutils.log(device, "error", "🔹 CAPABILITY HANDLER ERROR: send_model_command failed for open:", error_msg)
+        else
+          myutils.log(device, "info", "🔹 CAPABILITY HANDLER: send_model_command completed successfully for open")
+        end
       end,
-      
       [capabilities.windowShade.commands.close.NAME] = function(driver, device, command)
-        myutils.log(device, "info", "🔹 Moes Curtain Close Command")
-        local datapoints = get_moes_datapoints(device)
-        tuyaEF00_defaults.capability_handler(datapoints)(driver, device, command)
+        myutils.log(device, "info", "🔹 CAPABILITY HANDLER: Moes Curtain Close Command - routing to model DP 9")
+        myutils.log(device, "info", "🔹 CAPABILITY HANDLER: About to call send_model_command for close")
+        
+        local success, error_msg = pcall(function()
+          send_model_command(device, command)
+        end)
+        
+        if not success then
+          myutils.log(device, "error", "🔹 CAPABILITY HANDLER ERROR: send_model_command failed for close:", error_msg)
+        else
+          myutils.log(device, "info", "🔹 CAPABILITY HANDLER: send_model_command completed successfully for close")
+        end
       end,
-      
       [capabilities.windowShade.commands.pause.NAME] = function(driver, device, command)
-        myutils.log(device, "info", "🔹 Moes Curtain Pause Command")
-        local datapoints = get_moes_datapoints(device)
-        tuyaEF00_defaults.capability_handler(datapoints)(driver, device, command)
+        myutils.log(device, "info", "🔹 Moes Curtain Pause Command - routing to model DP 9")
+        -- Route command to model's datapoint processing with proper context
+        send_model_command(device, command)
       end,
     },
     
     [capabilities.windowShadeLevel.ID] = {
-      [capabilities.windowShadeLevel.commands.setLevel.NAME] = function(driver, device, command)
-        myutils.log(device, "info", "🔹 Moes Curtain SetLevel Command:", command.args.level)
-        local datapoints = get_moes_datapoints(device)
-        tuyaEF00_defaults.capability_handler(datapoints)(driver, device, command)
+      [capabilities.windowShadeLevel.commands.setShadeLevel.NAME] = function(driver, device, command)
+        local level = command.args.shadeLevel or 50
+        myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Moes SetLevel Command:", level, "% - bypassing model, sending directly to moesCurtainMultiCommand DP")
+        
+        -- Get model configuration to find the moesCurtainMultiCommand datapoint
+        local utils = require("utils")
+        local model = utils.load_model_from_json(device:get_model(), device:get_manufacturer())
+        
+        -- DEBUG: Log model loading result IMMEDIATELY
+        myutils.log(device, "info", "🔹 DEBUG: Model load result:", model and "SUCCESS" or "FAILED")
+        if model then
+          myutils.log(device, "info", "🔹 DEBUG: Model has datapoints:", model.datapoints and "YES" or "NO")
+          if model.datapoints then
+            myutils.log(device, "info", "🔹 DEBUG: Datapoints type:", type(model.datapoints))
+            myutils.log(device, "info", "🔹 DEBUG: Datapoints count:", #model.datapoints)
+          end
+        end
+        
+        if not model or not model.datapoints then
+          myutils.log(device, "error", "🔹 DIRECT OVERRIDE: No model datapoints found")
+          return
+        end
+        
+        -- DEBUG: Log what's actually in the model (datapoints is a HASH TABLE by DP ID!)
+        myutils.log(device, "info", "🔹 DEBUG: Model loaded successfully")
+        local dp_count = 0
+        for dp_id, dp_handler in pairs(model.datapoints) do
+          dp_count = dp_count + 1
+          myutils.log(device, "info", "🔹 DEBUG: DP", dp_id, "- handler type:", type(dp_handler))
+        end
+        myutils.log(device, "info", "🔹 DEBUG: Model datapoints count (pairs):", dp_count)
+        
+        -- Find the moesCurtainMultiCommand datapoint (datapoints is a HASH TABLE by DP ID!)
+        local target_dpid = nil
+        local target_group = 1
+        for dp_id, dp_handler in pairs(model.datapoints) do
+          -- Check if this handler has multi_command_mapping that includes windowShadeLevel
+          if dp_handler and dp_handler.multi_command_mapping then
+            for _, capability in ipairs(dp_handler.multi_command_mapping) do
+              if capability == "windowShadeLevel" then
+                target_dpid = dp_id
+                target_group = dp_handler.group or 1
+                myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Found windowShadeLevel handler at DP", target_dpid, "group", target_group)
+                break
+              end
+            end
+            if target_dpid then break end
+          end
+        end
+        
+        if not target_dpid then
+          myutils.log(device, "error", "🔹 DIRECT OVERRIDE: moesCurtainMultiCommand datapoint not found in model")
+          return
+        end
+        
+        -- Get the moesCurtainMultiCommand handler with correct group
+        local commands = require("commands")
+        local handler = commands.moesCurtainMultiCommand({group = target_group})
+        
+        -- Call command_handler for the discovered datapoint
+        local cmd = handler:command_handler(target_dpid, command, device)
+        if cmd then
+          myutils.log(device, "info", "🔹 DIRECT OVERRIDE: Sending DataRequest to DP", target_dpid, "with value:", cmd[2])
+          local clusters = require("st.zigbee.zcl.clusters")
+          device:send(clusters.TuyaEF00.commands.DataRequest(device, {{cmd[1], cmd[2]}}))
+        else
+          myutils.log(device, "error", "🔹 DIRECT OVERRIDE: Failed to generate command for DP", target_dpid)
+        end
       end,
     },
     
     [capabilities.windowShadePreset.ID] = {
       [capabilities.windowShadePreset.commands.presetPosition.NAME] = function(driver, device, command)
-        myutils.log(device, "info", "🔹 Moes Curtain Preset Command")
-        local datapoints = get_moes_datapoints(device)
-        tuyaEF00_defaults.capability_handler(datapoints)(driver, device, command)
+        myutils.log(device, "info", "🔹 CAPABILITY HANDLER: Moes Curtain Preset Command - routing to model DP 9")
+        myutils.log(device, "info", "🔹 CAPABILITY HANDLER: About to call send_model_command")
+        
+        -- Try-catch the function call to see what's failing
+        local success, error_msg = pcall(function()
+          send_model_command(device, command)
+        end)
+        
+        if not success then
+          myutils.log(device, "error", "🔹 CAPABILITY HANDLER ERROR: send_model_command failed:", error_msg)
+        else
+          myutils.log(device, "info", "🔹 CAPABILITY HANDLER: send_model_command completed successfully")
+        end
       end,
     },
     
@@ -100,51 +222,15 @@ local template = {
     },
   },
   
-  -- Handle Tuya EF00 responses
-  zigbee_handlers = {
-    global = {
-      [zcl_clusters.TuyaEF00.ID] = {
-        [zcl_global_commands.WRITE_ATTRIBUTE_ID] = function(driver, device, zb_rx)
-          myutils.log(device, "debug", "🔹 Moes Curtain Global Handler")
-          local datapoints = get_moes_datapoints(device)
-          tuyaEF00_defaults.command_response_handler(datapoints)(driver, device, zb_rx)
-        end,
-      },
-    },
-    cluster = {
-      [zcl_clusters.TuyaEF00.ID] = {
-        [zcl_clusters.TuyaEF00.commands.DataResponse.ID] = function(driver, device, zb_rx)
-          myutils.log(device, "debug", "🔹 Moes Curtain DataResponse")
-          local datapoints = get_moes_datapoints(device)
-          tuyaEF00_defaults.command_response_handler(datapoints)(driver, device, zb_rx)
-        end,
-        
-        [zcl_clusters.TuyaEF00.commands.DataReport.ID] = function(driver, device, zb_rx)
-          myutils.log(device, "debug", "🔹 Moes Curtain DataReport")
-          local datapoints = get_moes_datapoints(device)
-          tuyaEF00_defaults.command_response_handler(datapoints)(driver, device, zb_rx)
-        end,
-        
-        [zcl_clusters.TuyaEF00.commands.StatusReport.ID] = function(driver, device, zb_rx)
-          myutils.log(device, "debug", "🔹 Moes Curtain StatusReport")
-          local datapoints = get_moes_datapoints(device)
-          tuyaEF00_defaults.command_response_handler(datapoints)(driver, device, zb_rx)
-        end,
-        
-        [zcl_clusters.TuyaEF00.commands.McuSyncTime.ID] = tuyaEF00_defaults.command_synctime_handler,
-        [zcl_clusters.TuyaEF00.commands.GatewayStatus.ID] = tuyaEF00_defaults.command_gatestatus_handler,
-      },
-    },
-  },
+  -- Note: Zigbee handlers are intentionally NOT overridden here to preserve
+  -- default signal strength, battery, and other basic handlers.
+  -- TuyaEF00 message handling is done by the genericEF00 sub-driver that follows.
   
   -- Lifecycle handlers
   lifecycle_handlers = {
     added = function(driver, device, event, ...)
       myutils.log(device, "info", "🔹 Moes Curtain Device Added")
-      
-      -- Set up initial datapoints
-      local datapoints = get_moes_datapoints(device)
-      device:set_field("moes_datapoints", datapoints, {persist = true})
+      log_moes_configuration(device)
       
       -- Request initial status
       device.thread:call_with_delay(2, function()
@@ -167,41 +253,12 @@ local template = {
       
       -- Update datapoints if preferences changed
       if args.old_st_store.preferences.moesCurtainDatapoints ~= device.preferences.moesCurtainDatapoints then
-        local datapoints = get_moes_datapoints(device)
-        device:set_field("moes_datapoints", datapoints, {persist = true})
+        myutils.log(device, "info", "🔹 Moes Curtain datapoint preference updated")
+        log_moes_configuration(device)
+        -- No datapoint override - let model handle configuration
       end
     end,
   },
 }
-
--- Helper function to get Moes curtain datapoints configuration
-function get_moes_datapoints(device)
-  local datapoints = {}
-  
-  -- Check for cached datapoints first
-  local cached = device:get_field("moes_datapoints")
-  if cached then
-    return cached
-  end
-  
-  -- Get datapoint ID from preferences (default to 9)
-  local dpid = 9
-  if device.preferences.moesCurtainDatapoints then
-    for dp_str in device.preferences.moesCurtainDatapoints:gmatch("[^,]+") do
-      dpid = tonumber(dp_str, 10) or 9
-      break -- Use first datapoint ID
-    end
-  end
-  
-  -- Create multi-command handler for the datapoint
-  datapoints[dpid] = commands.moesCurtainMultiCommand({
-    group = dpid,
-    rate = 100,
-  })
-  
-  myutils.log(device, "info", "🔹 Moes Curtain using DP", dpid, "with multi-command handler")
-  
-  return datapoints
-end
 
 return template

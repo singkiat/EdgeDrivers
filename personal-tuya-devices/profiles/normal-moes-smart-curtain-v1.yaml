@@ -23,38 +23,60 @@ components:
       - id: valleyboard16460.debug
         version: 1
     categories:
-      - name: WindowShade
+      - name: Blind
 preferences:
+  - name: profile
+    title: Profile
+    description: "Choose the profile "
+    required: true
+    preferenceType: enumeration
+    definition:
+      options:
+        normal_moes_smart_curtain_v1: Normal
+        generic_ef00_v1: Generic
+      default: normal_moes_smart_curtain_v1
+  - name: logLevel
+    title: Log level
+    required: true
+    preferenceType: enumeration
+    definition:
+      options:
+        error: Error
+        warn: Warn, Error
+        info: Info, Warn, Error
+        debug: Debug, Info, Warn, Error
+      default: error
   - name: moesCurtainDatapoints
     title: Moes Curtain Datapoint
     description: Datapoint ID for Moes curtain control (typically 9)
     required: false
     preferenceType: string
     definition:
+      stringType: text
       default: "9"
-  - name: presetPosition
-    title: Preset Position
-    description: Position percentage for preset button (0=Open, 100=Closed)
-    required: false
-    preferenceType: integer
-    definition:
-      minimum: 0
-      maximum: 100
-      default: 50
+  - preferenceId: presetPosition
+    explicit: true
   - name: reverse
-    title: Reverse Open/Close
-    description: Reverse the meaning of open and close commands
+    title: Reverse Direction
+    description: Reverse the curtain direction calculation (swap open/close)
     required: false
     preferenceType: boolean
     definition:
       default: false
-  - name: motorDirection
-    title: Motor Direction
-    description: Control physical motor rotation direction
+  - name: dpWindowShadeLevelMain01
+    title: WindowShade Level DP
+    description: Datapoint for window shade level reporting (typically 8)
     required: false
-    preferenceType: enumeration
+    preferenceType: integer
     definition:
-      options:
-        forward: Forward
-        reverse: Reverse
-      default: forward
+      minimum: 1
+      maximum: 255
+      default: 8
+metadata:
+  deviceType: Blind
+  ocfDeviceType: oic.d.blind
+  deviceTypeId: Blind
+  mnmn: SmartThingsCommunity
+owner:
+  ownerType: USER
+  ownerId: ea35e8c8-3aef-2f72-958b-e3ad10644043

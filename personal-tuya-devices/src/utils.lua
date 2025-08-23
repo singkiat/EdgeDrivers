@@ -267,7 +267,23 @@ function utils.load_model_from_json(model, manufacturer)
         group = dpid
       }
     })
-    o.datapoints[dpid] = commands[datapoint.command](base)
+    
+    -- DEBUG: Log each datapoint processing attempt
+    log.info("🔹 UTILS DEBUG: Processing DP", dpid, "command:", datapoint.command)
+    local command_handler = commands[datapoint.command]
+    log.info("🔹 UTILS DEBUG: Command handler exists:", command_handler and "YES" or "NO")
+    
+    if command_handler then
+      local success, result = pcall(command_handler, base)
+      if success then
+        o.datapoints[dpid] = result
+        log.info("🔹 UTILS DEBUG: Successfully created DP", dpid, "handler")
+      else
+        log.error("🔹 UTILS DEBUG: Error creating DP", dpid, "handler:", result)
+      end
+    else
+      log.error("🔹 UTILS DEBUG: Command", datapoint.command, "not found in commands module")
+    end
   end
   
   return o

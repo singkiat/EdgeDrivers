@@ -57,6 +57,9 @@ local template = {
 
 local driver = require("st.zigbee")("personal-tuya-devices", template)
 
+-- Register default handlers for basic capabilities (signal strength, battery, etc.)
+defaults.register_for_default_handlers(driver, driver.supported_capabilities)
+
 myutils.details(driver)
 
 driver:run()

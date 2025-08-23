@@ -82,7 +82,7 @@ local default_generic = {
     -- log.info("PREFNAME 2", pref_name, pdp, dp, pdp == nil, type(pdp), cap)
     return (not dp or pdp ~= 0) and pdp or dp
   end,
-  to_zigbee = function (self, value, device) error("to_zigbee must be implemented", self.capability, self.attribute) end,
+  to_zigbee = function (self, value, device) error("to_zigbee must be implemented for " .. (self.capability or "unknown") .. "." .. (self.attribute or "unknown")) end,
   from_zigbee = function (self, value, device, force_child, datapoints) return value end,
   command_handler = function (self, dpid, command, device)  -- ao receber comando do aplicativo
     return { math.abs(self:get_dp(dpid, device)), self:to_zigbee(self:command_to_value(command, device), device) }
@@ -868,9 +868,10 @@ local defaults = {
   },
   windowShadeLevel = {
     capability = "windowShadeLevel",
-    attribute = "shadeLevel",
+    attribute = "shadeLevel", 
     rate_name = "rate",
     rate = 100,
+    parent = "generic", -- Inherit get_dp method from default_generic
     from_zigbee = function (self, value, device)
       local pref = get_child_or_parent(device, self.group).preferences
       mylogs.log(device, "debug", "from_zigbee windowShadeLevel", pref.reverse, value, utils.stringify_table(pref))
@@ -886,6 +887,49 @@ local defaults = {
         return tuya_types.Int32(math.floor(to_number(value) * get_value(pref[self.rate_name], self.rate) / 100))
       end
       return tuya_types.Int32(math.floor((100 - to_number(value)) * get_value(pref[self.rate_name], self.rate) / 100))
+    end,
+  },
+  -- DP 8 Status-only handler - processes incoming position reports but NO outgoing commands
+  windowShadeLevelStatus = {
+    capability = "windowShadeLevel",
+    attribute = "shadeLevel", 
+    rate_name = "rate",
+    rate = 100,
+    parent = "generic",
+    -- Only handles incoming data - same logic as windowShadeLevel + updates windowShade status
+    from_zigbee = function (self, value, device)
+      local pref = get_child_or_parent(device, self.group).preferences
+      mylogs.log(device, "debug", "from_zigbee windowShadeLevelStatus (DP8)", pref.reverse, value, utils.stringify_table(pref))
+      
+      local shade_level
+      if pref.reverse then
+        shade_level = math.floor(100 * to_number(value) / get_value(pref[self.rate_name], self.rate))
+      else
+        shade_level = math.floor(100 - (100 * to_number(value) / get_value(pref[self.rate_name], self.rate)))
+      end
+      
+      -- Also update windowShade status based on level
+      local window_shade_status
+      if shade_level < 1 then
+        window_shade_status = "open"  -- 0-5% = open
+      elseif shade_level > 99 then  
+        window_shade_status = "closed"  -- 95-100% = closed
+      else
+        window_shade_status = "partially open"  -- anything in between
+      end
+      
+      log.info("🔹 DP8 Status Update: Level=" .. shade_level .. "%, Status=" .. window_shade_status)
+      
+      -- Emit both events
+      device:emit_event(capabilities.windowShadeLevel.shadeLevel(shade_level))
+      device:emit_event(capabilities.windowShade.windowShade(window_shade_status))
+      
+      return shade_level
+    end,
+    -- BLOCK outgoing commands - this DP only processes incoming status!
+    command_handler = function (self, dpid, command, device)
+      log.info("🔹 DP8 windowShadeLevelStatus - BLOCKING outgoing command, use DP 9 instead")
+      return nil  -- Return nil so this DP doesn't handle outgoing commands
     end,
   },
   windowShadePreset = {
@@ -950,17 +994,6 @@ local defaults = {
   },
 }
 
-for k,v in pairs(defaults) do
-  setmetatable(v, {
-    __index=v.parent and defaults[v.parent] or default_generic,
-    __call=function (self, base)
-      setmetatable(base, {
-        __index=self
-      })
-      return base
-    end
-  })
-end
 -- ========================================================================================
 -- CUSTOM IMPLEMENTATIONS: Moes Smart Curtain - Multi-Command Single Datapoint Handler
 -- ========================================================================================
@@ -972,50 +1005,68 @@ defaults.moesCurtainMultiCommand = {
   attribute = "windowShade",
   rate_name = "rate",
   rate = 100,
+  parent = "generic", -- Inherit standard methods like get_dp
   
-  -- Define which capabilities this handler supports
+  -- CRITICAL: Multi-command mapping - tells the framework which capabilities this datapoint handles
   multi_command_mapping = {
-    "windowShade",
-    "windowShadeLevel", 
-    "windowShadePreset"
+    "windowShade",        -- open, close, pause commands
+    "windowShadeLevel",   -- setShadeLevel commands  
+    "windowShadePreset"   -- presetPosition commands
   },
   
-  -- Smart command handler that processes different command types
-  command_handler = function (self, dpid, command, device, datapoints)
+  -- Uses standard command_handler from default_generic
+  -- Logic moved to command_to_value and to_zigbee following standard pattern
+  
+  -- Convert commands to values - handles multiple command types
+  command_to_value = function (self, command, device)
+    log.info("🔹 Moes Command Processing - Capability:", command.capability, "Command:", command.command)
+    log.info("🔹 Moes Command Args:", utils.stringify_table(command.args or {}))
+    
+    -- Get device preferences to check reverse setting
     local pref = get_child_or_parent(device, self.group).preferences
-    local value_to_send
+    log.info("🔹 Moes Command - Reverse setting:", pref.reverse)
     
     -- Handle different capability commands
     if command.capability == "windowShade" then
       if command.command == "open" then
-        mylogs.log(device, "info", "🔹 Moes Open Command - sending 0% to DP " .. dpid)
-        value_to_send = 0
+        -- If reversed: open = 100%, otherwise open = 0%
+        local open_value = pref.reverse and 100 or 0
+        log.info("🔹 Moes Open Command - sending " .. open_value .. "% (reverse=" .. tostring(pref.reverse) .. ")")
+        return open_value
       elseif command.command == "close" then
-        mylogs.log(device, "info", "🔹 Moes Close Command - sending 100% to DP " .. dpid)
-        value_to_send = 100
+        -- If reversed: close = 0%, otherwise close = 100%
+        local close_value = pref.reverse and 0 or 100
+        log.info("🔹 Moes Close Command - sending " .. close_value .. "% (reverse=" .. tostring(pref.reverse) .. ")")
+        return close_value
       elseif command.command == "pause" then
-        mylogs.log(device, "info", "🔹 Moes Pause Command - stopping curtain at DP " .. dpid)
+        log.info("🔹 Moes Pause Command - stopping curtain")
         -- Get current position or send 50% as stop command
         local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 50
-        value_to_send = current_level
+        log.info("🔹 Moes Pause - current level:", current_level, "sending:", current_level)
+        return current_level
       end
     elseif command.capability == "windowShadeLevel" then
-      value_to_send = to_number(command.args.level)
-      mylogs.log(device, "info", "🔹 Moes SetLevel Command - sending " .. value_to_send .. "% to DP " .. dpid)
+      log.info("🔹 Moes SetLevel - raw args:", utils.stringify_table(command.args))
+      local level = to_number(command.args.shadeLevel)
+      
+      -- For setLevel, we don't reverse the level itself, just respect the hardware direction
+      -- The level (0-100%) should match what the user sees in the app
+      log.info("🔹 Moes SetLevel Command - parsed level:", level, "- sending " .. (level or "NIL") .. "% (no reversal for direct levels)")
+      return level or 50  -- Fallback if parsing failed
     elseif command.capability == "windowShadePreset" then
-      value_to_send = pref.presetPosition or 50
-      mylogs.log(device, "info", "🔹 Moes Preset Command - sending " .. value_to_send .. "% to DP " .. dpid)
+      local preset = pref.presetPosition or 50
+      log.info("🔹 Moes Preset Command - sending " .. preset .. "% (no reversal for direct levels)")
+      return preset
     end
     
-    if value_to_send then
-      return { math.abs(self:get_dp(dpid, device)), tuya_types.Int32(value_to_send) }
-    end
-    return nil
+    log.info("🔹 Moes Command - no matching handler, using fallback 50%")
+    return 50 -- Default fallback
   end,
   
-  -- Handle the to_zigbee conversion (fallback, shouldn't be called with custom command_handler)
+  -- Handle the to_zigbee conversion - standard pattern
   to_zigbee = function (self, value, device)
-    mylogs.log(device, "info", "🔹 Moes Fallback to_zigbee - sending " .. value .. "% to DP 9")
+    local pref = get_child_or_parent(device, self.group).preferences
+    log.info("🔹 Moes to_zigbee - converting value:", value, "reverse:", pref.reverse)
     return tuya_types.Int32(to_number(value))
   end,
   
@@ -1040,21 +1091,25 @@ defaults.moesCurtainMultiCommand = {
     local shade_event = capabilities.windowShade.windowShade(shade_state)
     return shade_event
   end,
-  
-  -- Convert commands to values for reporting
-  command_to_value = function (self, command, device)
-    if command.capability == "windowShade" then
-      return command.command == "open" and "open" or command.command == "pause" and "partially open" or "closed"
-    elseif command.capability == "windowShadeLevel" then
-      return command.args.level
-    elseif command.capability == "windowShadePreset" then
-      local pref = get_child_or_parent(device, self.group).preferences
-      return pref.presetPosition or 50
-    end
-    return 50 -- Default fallback
-  end,
 }
 
 defaults.generic = default_generic
+
+-- Apply metatable to all defaults entries - using rawget to prevent infinite __index loops
+for k,v in pairs(defaults) do
+  setmetatable(v, {
+    __index=function(t, key)
+      -- Use rawget to avoid triggering __index recursively
+      local parent_table = rawget(t, 'parent') and defaults[rawget(t, 'parent')] or default_generic
+      return rawget(parent_table, key)
+    end,
+    __call=function (self, base)
+      setmetatable(base, {
+        __index=self  -- Let normal inheritance work - don't bypass with rawget
+      })
+      return base
+    end
+  })
+end
 
 return defaults

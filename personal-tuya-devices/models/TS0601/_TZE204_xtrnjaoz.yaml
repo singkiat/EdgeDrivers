@@ -2,9 +2,9 @@ deviceLabel: Moes Smart Curtain Motor
 profiles:
   - normal_moes_smart_curtain_v1
 datapoints:
-  # DP 8 - Status reporting (position feedback from device)  
+  # DP 8 - Status reporting ONLY (position feedback from device) - no command mapping
   - id: 8
-    command: windowShadeLevel
+    command: windowShadeLevelStatus  # Different command name so it won't match outgoing commands
     base:
       group: 1
   # DP 9 - Multi-command single datapoint using moesCurtainMultiCommand
