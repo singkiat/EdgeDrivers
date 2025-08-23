@@ -1014,68 +1014,35 @@ defaults.moesCurtainMultiCommand = {
     "windowShadePreset"   -- presetPosition commands
   },
   
-  -- OVERRIDE: get_dp to return actual DP for this handler (not preference lookup)
+  -- Override get_dp to use actual DP instead of preference lookup
   get_dp = function(self, dpid, device)
-    -- Always return the actual dpid passed to this handler
-    -- This fixes the issue where get_dp was looking up dpWindowShadeMain01 preference (DP 1)
-    -- instead of using the actual DP this handler is assigned to (DP 9)
-    log.info("🔹 Moes get_dp override: returning actual DP", dpid, "instead of preference lookup")
-    return dpid
+    return dpid -- Return actual DP to avoid preference conflicts
   end,
-  
-  -- Uses standard command_handler from default_generic
-  -- Logic moved to command_to_value and to_zigbee following standard pattern
   
   -- Convert commands to values - handles multiple command types
   command_to_value = function (self, command, device)
-    log.info("🔹 Moes Command Processing - Capability:", command.capability, "Command:", command.command)
-    log.info("🔹 Moes Command Args:", utils.stringify_table(command.args or {}))
-    
-    -- Get device preferences to check reverse setting
     local pref = get_child_or_parent(device, self.group).preferences
-    log.info("🔹 Moes Command - Reverse setting:", pref.reverse)
     
     -- Handle different capability commands
     if command.capability == "windowShade" then
       if command.command == "open" then
-        -- If reversed: open = 100%, otherwise open = 0%
-        local open_value = pref.reverse and 100 or 0
-        log.info("🔹 Moes Open Command - sending " .. open_value .. "% (reverse=" .. tostring(pref.reverse) .. ")")
-        return open_value
+        return pref.reverse and 100 or 0
       elseif command.command == "close" then
-        -- If reversed: close = 0%, otherwise close = 100%
-        local close_value = pref.reverse and 0 or 100
-        log.info("🔹 Moes Close Command - sending " .. close_value .. "% (reverse=" .. tostring(pref.reverse) .. ")")
-        return close_value
+        return pref.reverse and 0 or 100
       elseif command.command == "pause" then
-        log.info("🔹 Moes Pause Command - stopping curtain")
-        -- Get current position or send 50% as stop command
-        local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 50
-        log.info("🔹 Moes Pause - current level:", current_level, "sending:", current_level)
-        return current_level
+        return device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 50
       end
     elseif command.capability == "windowShadeLevel" then
-      log.info("🔹 Moes SetLevel - raw args:", utils.stringify_table(command.args))
-      local level = to_number(command.args.shadeLevel)
-      
-      -- For setLevel, we don't reverse the level itself, just respect the hardware direction
-      -- The level (0-100%) should match what the user sees in the app
-      log.info("🔹 Moes SetLevel Command - parsed level:", level, "- sending " .. (level or "NIL") .. "% (no reversal for direct levels)")
-      return level or 50  -- Fallback if parsing failed
+      return to_number(command.args.shadeLevel) or 50
     elseif command.capability == "windowShadePreset" then
-      local preset = pref.presetPosition or 50
-      log.info("🔹 Moes Preset Command - sending " .. preset .. "% (no reversal for direct levels)")
-      return preset
+      return pref.presetPosition or 50
     end
     
-    log.info("🔹 Moes Command - no matching handler, using fallback 50%")
     return 50 -- Default fallback
   end,
   
-  -- Handle the to_zigbee conversion - standard pattern
+  -- Convert values to Zigbee format
   to_zigbee = function (self, value, device)
-    local pref = get_child_or_parent(device, self.group).preferences
-    log.info("🔹 Moes to_zigbee - converting value:", value, "reverse:", pref.reverse)
     return tuya_types.Int32(to_number(value))
   end,
   
