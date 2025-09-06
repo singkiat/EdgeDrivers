@@ -39,6 +39,7 @@ preferences:
       options:
         normal_windowShade_v2: Normal
         normal_windowShade_v1: No battery
+        normal_moes_smart_curtain_v1: Moes Blind
         generic_ef00_v1: Generic
       default: normal_windowShade_v2
   - name: logLevel

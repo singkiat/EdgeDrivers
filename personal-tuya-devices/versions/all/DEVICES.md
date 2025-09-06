@@ -50,6 +50,7 @@
 | TS0601  | \_TZE200_ves1ycwx     | Power Meter              | normal-multi-powerMeter-v1   |   6,   1,   7,   8                                         |
 | TS0601  | \_TZE200_wfxuhoea     | Garage Door              | normal-garageDoor-v1         |   1,   3                                                   |
 | TS0601  | \_TZE200_whkgqxse     | LCD T+H Sensor           | normal-temphumibatt-v1       |   1,   2,   4                                              |
+| TS0601  | \_TZE200_xtrnjaoz     | Moes Smart Curtain Motor | normal-moes-smart-curtain-v1 |   1,   8,   9                                              |
 | TS0601  | \_TZE200_yjjdcqsq     | Thermostat               | normal-temphumibatt-v1       |   1,   2,   3                                              |
 | TS0601  | \_TZE200_yvx5lh6k     | Air Quality              | normal-airQuality-v1         |   2,  18,  19,  21,  22                                    |
 | TS0601  | \_TZE200_zl1kmjqx     | LCD T+H Sensor           | normal-temphumibatt-v1       |   1,   2,   4                                              |

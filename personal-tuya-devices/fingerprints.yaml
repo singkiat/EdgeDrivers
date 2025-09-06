@@ -393,6 +393,23 @@ zigbeeManufacturer:
         - 0xEF00
       client:
         - 0x19
+  - id: TS0601/_TZE200_xtrnjaoz
+    model: TS0601
+    manufacturer: _TZE200_xtrnjaoz
+    deviceProfileName: normal-moes-smart-curtain-v1
+    deviceLabel: Moes Smart Curtain Motor
+    zigbeeProfiles:
+      - 0x104
+    deviceIdentifiers:
+      - 0x100
+    clusters:
+      server:
+        - 0x0
+        - 0x4
+        - 0x5
+        - 0xEF00
+      client:
+        - 0x19        
 zigbeeGeneric:
   - id: GenericEF00
     deviceProfileName: generic-ef00-v1
