@@ -847,6 +847,72 @@ local defaults = {
     capability = "windowShade",
     attribute = "windowShade",
     supported_values = {WindowShadeStatus.OPEN, WindowShadeStatus.PAUSE, WindowShadeStatus.CLOSE, WindowShadeStatus.OPEN, WindowShadeStatus.PAUSE, WindowShadeStatus.CLOSE},  -- normal open, normal pause, normal close, reverse close, pause, reverse open
+    
+    -- Handle outgoing commands - emit opening/closing states with pause logic
+    command_handler = function (self, dpid, command, device)
+      
+      -- Emit transitional state immediately for open/close commands
+      if command.command == "open" then
+        device:emit_event(capabilities.windowShade.windowShade("opening"))
+        device:set_field("movement_state", "opening")
+        mylogs.log(device, "info", "🔄 Opening curtain (DP1) → 100% - transitional state emitted")
+        self:schedule_windowshade_pause(device, 30)  -- 30 second pause for slow blinds
+      elseif command.command == "close" then
+        device:emit_event(capabilities.windowShade.windowShade("closing"))
+        device:set_field("movement_state", "closing")
+        mylogs.log(device, "info", "🔄 Closing curtain (DP1) → 0% - transitional state emitted")
+        self:schedule_windowshade_pause(device, 30)  -- 30 second pause for slow blinds
+      end
+      
+      -- Continue with standard command processing
+      return { math.abs(self:get_dp(dpid, device)), self:to_zigbee(self:command_to_value(command, device), device) }
+    end,
+    
+    -- PAUSE LOGIC for standard windowShade commands
+    schedule_windowshade_pause = function(self, device, delay_seconds)
+      -- Cancel any existing pause timer
+      local existing_timer = device:get_field("state_clearing_timer")
+      if existing_timer then
+        device.thread:cancel_timer(existing_timer)
+      end
+      
+      -- Schedule new pause timer
+      local timer = device.thread:call_with_delay(delay_seconds, function()
+        mylogs.log(device, "info", "⏸️ DP1 Pause complete - clearing transitional state and setting final state")
+        
+        -- Clear movement state
+        device:set_field("movement_state", nil)
+        device:set_field("state_clearing_timer", nil)
+        
+        -- Get current actual position from device state
+        local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel")
+        
+        if current_level ~= nil then
+          -- Get reverse preference to determine correct final state
+          local pref = get_child_or_parent(device, self.group or "main").preferences
+          local final_state
+          
+          if current_level == 0 then
+            -- 0% interpretation depends on reverse setting
+            final_state = pref.reverse and "open" or "closed"
+          elseif current_level == 100 then
+            -- 100% interpretation depends on reverse setting  
+            final_state = pref.reverse and "closed" or "open"
+          else
+            final_state = "partially open"  -- 1-99% = partially open regardless of reverse
+          end
+          
+          mylogs.log(device, "info", "🏁 DP1 Final state after pause: " .. current_level .. "% = " .. final_state)
+          device:emit_event(capabilities.windowShade.windowShade(final_state))
+        else
+          mylogs.log(device, "warn", "⚠️ DP1 No current level available after pause - keeping previous state")
+        end
+      end)
+      
+      -- Store timer reference
+      device:set_field("state_clearing_timer", timer)
+    end,
+    
     to_zigbee = function (self, value, device)
       local pref = get_child_or_parent(device, self.group).preferences
       mylogs.log(device, "debug", "to_zigbee windowShade", pref.reverse, value, utils.stringify_table(pref))
@@ -864,6 +930,29 @@ local defaults = {
       end
       return v == WindowShadeStatus.OPEN and "closed" or v == WindowShadeStatus.PAUSE and "partially open" or "open"
     end,
+    
+    -- Add create_event to respect transitional states (like windowShadeLevelStatus)
+    create_event = function(self, value, device)
+      -- Process the value to get the window shade state  
+      local window_shade_state = self:from_zigbee(value, device)
+      
+      -- Check if we're in transitional state with active pause timer
+      local movement_state = device:get_field("movement_state")
+      local state_clearing_timer = device:get_field("state_clearing_timer")
+      
+      -- If pause timer is active, let it handle the final state
+      if movement_state and state_clearing_timer then
+        mylogs.log(device, "debug", "⏳ DP1 Status update during " .. movement_state .. ": " .. window_shade_state .. " (pause timer will handle final state)")
+        return window_shade_state  -- Don't emit windowShade state, let pause timer do it
+      end
+      
+      -- No transitional state, emit state immediately
+      mylogs.log(device, "info", "📊 DP1 Immediate status: " .. window_shade_state)
+      device:emit_event(capabilities.windowShade.windowShade(window_shade_state))
+      
+      return window_shade_state
+    end,
+    
     command_to_value = function (self, command) return command.command == "open" and "open" or command.command == "pause" and "partially open" or "closed" end,
   },
   windowShadeLevel = {
@@ -872,21 +961,32 @@ local defaults = {
     rate_name = "rate",
     rate = 100,
     parent = "generic", -- Inherit get_dp method from default_generic
+    
     from_zigbee = function (self, value, device)
       local pref = get_child_or_parent(device, self.group).preferences
-      mylogs.log(device, "debug", "from_zigbee windowShadeLevel", pref.reverse, value, utils.stringify_table(pref))
+      
+      -- Convert device value to STANDARD scale: 0% = closed, 100% = open
       if pref.reverse then
+        -- Device: 0=open, 100=closed → Standard: 0=closed, 100=open (invert)
+        return math.floor(100 - (100 * to_number(value) / get_value(pref[self.rate_name], self.rate)))
+      else
+        -- Device: 0=closed, 100=open → Standard: same  
         return math.floor(100 * to_number(value) / get_value(pref[self.rate_name], self.rate))
       end
-      return math.floor(100 - (100 * to_number(value) / get_value(pref[self.rate_name], self.rate)))
     end,
+    
     to_zigbee = function (self, value, device)
       local pref = get_child_or_parent(device, self.group).preferences
       mylogs.log(device, "debug", "to_zigbee windowShadeLevel", pref.reverse, value, utils.stringify_table(pref))
+      
+      -- Convert STANDARD scale to device value: Input 0% = closed, 100% = open
       if pref.reverse then
+        -- Standard → Device: 0=closed, 100=open → 0=open, 100=closed (invert)
+        return tuya_types.Int32(math.floor((100 - to_number(value)) * get_value(pref[self.rate_name], self.rate) / 100))
+      else
+        -- Standard → Device: same (0=closed, 100=open)
         return tuya_types.Int32(math.floor(to_number(value) * get_value(pref[self.rate_name], self.rate) / 100))
       end
-      return tuya_types.Int32(math.floor((100 - to_number(value)) * get_value(pref[self.rate_name], self.rate) / 100))
     end,
   },
   -- DP 8 Status-only handler - processes incoming position reports but NO outgoing commands
@@ -896,32 +996,49 @@ local defaults = {
     rate_name = "rate",
     rate = 100,
     parent = "generic",
-    -- Only handles incoming data - same logic as windowShadeLevel + updates windowShade status
+    -- Only handles incoming data - converts device values to STANDARD 0-100% scale
     from_zigbee = function (self, value, device)
       local pref = get_child_or_parent(device, self.group).preferences
-      mylogs.log(device, "debug", "from_zigbee windowShadeLevelStatus (DP8)", pref.reverse, value, utils.stringify_table(pref))
+      local rate_value = get_value(pref[self.rate_name], self.rate)
       
+      -- Convert device value to STANDARD scale: 0% = closed, 100% = open
       local shade_level
-      if pref.reverse then
-        shade_level = math.floor(100 * to_number(value) / get_value(pref[self.rate_name], self.rate))
-      else
+      -- INVERTED REVERSE LOGIC: For position reports, use opposite of command reverse
+      if not pref.reverse then
+        -- Device: 0=open, 100=closed → Standard: 0=closed, 100=open (invert)
         shade_level = math.floor(100 - (100 * to_number(value) / get_value(pref[self.rate_name], self.rate)))
-      end
-      
-      -- Also update windowShade status based on level
-      local window_shade_status
-      if shade_level < 1 then
-        window_shade_status = "open"  -- 0-5% = open
-      elseif shade_level > 99 then  
-        window_shade_status = "closed"  -- 95-100% = closed
       else
-        window_shade_status = "partially open"  -- anything in between
+        -- Device: 0=closed, 100=open → Standard: same (no invert)
+        shade_level = math.floor(100 * to_number(value) / get_value(pref[self.rate_name], self.rate))
       end
       
-      log.info("🔹 DP8 Status Update: Level=" .. shade_level .. "%, Status=" .. window_shade_status)
-      
-      -- Emit both events
+      -- Always emit level update
       device:emit_event(capabilities.windowShadeLevel.shadeLevel(shade_level))
+      
+      -- COMMENTED OUT: DP 8 pause delay logic - user suspects this may not be needed
+      -- Check if we're in transitional state with active pause timer
+      -- local movement_state = device:get_field("movement_state")
+      -- local state_clearing_timer = device:get_field("state_clearing_timer")
+      -- 
+      -- -- If pause timer is active, let it handle the final state
+      -- if movement_state and state_clearing_timer then
+      --   mylogs.log(device, "debug", "⏳ DP8 Position update during " .. movement_state .. ": " .. shade_level .. "% (pause timer will handle final state)")
+      --   return shade_level  -- Don't emit windowShade state, let pause timer do it
+      -- end
+      
+      -- No transitional state, emit final state immediately
+      local window_shade_status
+      if shade_level == 0 then
+        -- 0% interpretation depends on reverse setting
+        window_shade_status = pref.reverse and "open" or "closed"
+      elseif shade_level == 100 then  
+        -- 100% interpretation depends on reverse setting
+        window_shade_status = pref.reverse and "closed" or "open"
+      else
+        window_shade_status = "partially open"  -- 1-99% = partially open regardless of reverse
+      end
+      
+      mylogs.log(device, "info", "📊 DP8 Immediate status: " .. shade_level .. "% = " .. window_shade_status)
       device:emit_event(capabilities.windowShade.windowShade(window_shade_status))
       
       return shade_level
@@ -937,12 +1054,19 @@ local defaults = {
     attribute = "presetPosition",
     rate_name = "rate",
     rate = 100,
+    
     to_zigbee = function (self, value, device)
       local pref = get_child_or_parent(device, self.group).preferences
+      local preset_level = pref.presetPosition or 50  -- STANDARD scale: 0% = closed, 100% = open
+      
+      -- Convert STANDARD preset to device value
       if pref.reverse then
-        return tuya_types.Int32(math.floor(pref.presetPosition * get_value(pref[self.rate_name], self.rate) / 100))
+        -- Standard → Device: 0=closed, 100=open → 0=open, 100=closed (invert)
+        return tuya_types.Int32(math.floor((100 - preset_level) * get_value(pref[self.rate_name], self.rate) / 100))
+      else
+        -- Standard → Device: same (0=closed, 100=open)
+        return tuya_types.Int32(math.floor(preset_level * get_value(pref[self.rate_name], self.rate) / 100))
       end
-      return tuya_types.Int32(math.floor((100 - pref.presetPosition) * get_value(pref[self.rate_name], self.rate) / 100))
     end,
     command_to_value = function (self, command) return command.command end,
   },
@@ -1019,21 +1143,21 @@ defaults.moesCurtainMultiCommand = {
     return dpid -- Return actual DP to avoid preference conflicts
   end,
   
-  -- Convert commands to values - handles multiple command types
+  -- Convert commands to values - STANDARDIZED: 0% = closed, 100% = open
   command_to_value = function (self, command, device)
     local pref = get_child_or_parent(device, self.group).preferences
     
-    -- Handle different capability commands
+    -- Handle different capability commands - STANDARD: 0% = closed, 100% = open
     if command.capability == "windowShade" then
       if command.command == "open" then
-        return pref.reverse and 100 or 0
+        return 100  -- Always 100% for open
       elseif command.command == "close" then
-        return pref.reverse and 0 or 100
+        return 0    -- Always 0% for close
       elseif command.command == "pause" then
         return device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 50
       end
     elseif command.capability == "windowShadeLevel" then
-      return to_number(command.args.shadeLevel) or 50
+      return to_number(command.args.shadeLevel) or 50  -- Direct level (0-100)
     elseif command.capability == "windowShadePreset" then
       return pref.presetPosition or 50
     end
@@ -1046,24 +1170,114 @@ defaults.moesCurtainMultiCommand = {
     return tuya_types.Int32(to_number(value))
   end,
   
-  -- Handle incoming datapoint values and emit appropriate events
+  -- Handle outgoing commands - emit opening/closing states and set up pause logic
+  command_handler = function (self, dpid, command, device)
+    
+    -- Emit transitional state immediately for open/close commands
+    if command.capability == "windowShade" then
+      if command.command == "open" then
+        device:emit_event(capabilities.windowShade.windowShade("opening"))
+        device:set_field("movement_state", "opening")
+        mylogs.log(device, "info", "🔄 Opening curtain → 100% - transitional state emitted")
+        self:schedule_state_clearing_pause(device, 5)  -- 5 second pause
+      elseif command.command == "close" then
+        device:emit_event(capabilities.windowShade.windowShade("closing"))
+        device:set_field("movement_state", "closing")
+        mylogs.log(device, "info", "🔄 Closing curtain → 0% - transitional state emitted")
+        self:schedule_state_clearing_pause(device, 5)  -- 5 second pause
+      end
+    elseif command.capability == "windowShadeLevel" then
+      -- For setShadeLevel, determine direction based on current vs target
+      local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 50
+      local target_level = to_number(command.args.shadeLevel) or 50
+      
+      if target_level > current_level + 5 then  -- Going higher percentage (more open)
+        device:emit_event(capabilities.windowShade.windowShade("opening"))
+        device:set_field("movement_state", "opening")
+        mylogs.log(device, "info", "🔄 Setting level " .. target_level .. "% (opening) - transitional state emitted")
+        self:schedule_state_clearing_pause(device, 4)  -- 4 second pause for level changes
+      elseif target_level < current_level - 5 then  -- Going lower percentage (more closed)
+        device:emit_event(capabilities.windowShade.windowShade("closing"))
+        device:set_field("movement_state", "closing")
+        mylogs.log(device, "info", "🔄 Setting level " .. target_level .. "% (closing) - transitional state emitted")
+        self:schedule_state_clearing_pause(device, 4)  -- 4 second pause for level changes
+      end
+    end
+    
+    -- Continue with standard command processing
+    return { math.abs(self:get_dp(dpid, device)), self:to_zigbee(self:command_to_value(command, device), device) }
+  end,
+  
+  -- PAUSE LOGIC: Clear transitional movement and set final state based on actual position
+  schedule_state_clearing_pause = function(self, device, delay_seconds)
+    -- Cancel any existing pause timer
+    local existing_timer = device:get_field("state_clearing_timer")
+    if existing_timer then
+      device.thread:cancel_timer(existing_timer)
+    end
+    
+    -- Schedule new pause timer
+    local timer = device.thread:call_with_delay(delay_seconds, function()
+      mylogs.log(device, "info", "⏸️ Pause complete - clearing transitional state and setting final state")
+      
+      -- Clear movement state
+      device:set_field("movement_state", nil)
+      device:set_field("state_clearing_timer", nil)
+      
+      -- Get current actual position from device state
+      local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel")
+      
+      if current_level ~= nil then
+        -- Determine final state based on STANDARD scale: 0% = closed, 100% = open
+        local final_state
+        if current_level == 0 then
+          final_state = "closed"  -- Exactly 0% = closed
+        elseif current_level == 100 then
+          final_state = "open"    -- Exactly 100% = open  
+        else
+          final_state = "partially open"  -- 1-99% = partially open
+        end
+        
+        mylogs.log(device, "info", "🏁 Final state after pause: " .. current_level .. "% = " .. final_state)
+        device:emit_event(capabilities.windowShade.windowShade(final_state))
+      else
+        mylogs.log(device, "warn", "⚠️ No current level available after pause - keeping previous state")
+      end
+    end)
+    
+    -- Store timer reference so we can cancel it if needed
+    device:set_field("state_clearing_timer", timer)
+  end,
+
+  -- Handle incoming datapoint values and emit appropriate events  
   create_event = function (self, value, device, force_child, datapoints)
     local level_value = to_number(value)
     
-    -- Emit windowShadeLevel event
+    -- Always emit windowShadeLevel event (position update)
     local level_event = capabilities.windowShadeLevel.shadeLevel(level_value)
     device:emit_event(level_event)
     
-    -- Emit windowShade state event based on level
-    local shade_state
-    if level_value <= 0 then
-      shade_state = "open"
-    elseif level_value >= 100 then
-      shade_state = "closed" 
-    else
-      shade_state = "partially open"
+    -- Check if we're currently in a transitional state (pause timer active)
+    local movement_state = device:get_field("movement_state")
+    local state_clearing_timer = device:get_field("state_clearing_timer")
+    
+    -- If we're in a transitional state, let the pause timer handle the final state
+    if movement_state and state_clearing_timer then
+      mylogs.log(device, "debug", "⏳ Position update during " .. movement_state .. ": " .. level_value .. "% (pause timer will handle final state)")
+      return nil  -- Don't emit windowShade event, let pause timer do it
     end
     
+    -- No transitional state active, safe to emit final state immediately
+    local shade_state
+    if level_value == 0 then
+      shade_state = "closed"  -- Exactly 0% = closed
+    elseif level_value == 100 then
+      shade_state = "open"    -- Exactly 100% = open  
+    else
+      shade_state = "partially open"  -- 1-99% = partially open
+    end
+    
+    mylogs.log(device, "info", "🏠 Immediate final state: " .. level_value .. "% = " .. shade_state)
     local shade_event = capabilities.windowShade.windowShade(shade_state)
     return shade_event
   end,
