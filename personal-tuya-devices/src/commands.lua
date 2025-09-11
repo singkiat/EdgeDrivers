@@ -863,17 +863,30 @@ local defaults = {
     -- Handle outgoing commands - emit opening/closing states with pause logic
     command_handler = function (self, dpid, command, device)
       
-      -- Emit transitional state immediately for open/close commands
+      -- Check current shade level to avoid unnecessary transitions
+      local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 50
+      
+      -- Emit transitional state immediately for open/close commands (only if movement needed)
       if command.command == "open" then
-        device:emit_event(capabilities.windowShade.windowShade("opening"))
-        device:set_field("movement_state", "opening")
-        mylogs.log(device, "info", "🔄 Opening curtain (DP1) → 100% - transitional state emitted")
-        self:schedule_windowshade_pause(device, 30)  -- 30 second pause for slow blinds
+        if current_level == 0 then
+          mylogs.log(device, "info", "⏸️ Already at 0% (open) - no transition needed")
+        else
+          device:emit_event(capabilities.windowShade.windowShade("opening"))
+          device:set_field("movement_state", "opening")
+          device:set_field("transition_start_time", os.time())
+          mylogs.log(device, "info", "🔄 Opening curtain (DP1) from " .. current_level .. "% → 0% - transitional state emitted")
+          self:schedule_windowshade_pause(device, 30)  -- 30 second pause for slow blinds
+        end
       elseif command.command == "close" then
-        device:emit_event(capabilities.windowShade.windowShade("closing"))
-        device:set_field("movement_state", "closing")
-        mylogs.log(device, "info", "🔄 Closing curtain (DP1) → 0% - transitional state emitted")
-        self:schedule_windowshade_pause(device, 30)  -- 30 second pause for slow blinds
+        if current_level == 100 then
+          mylogs.log(device, "info", "⏸️ Already at 100% (closed) - no transition needed")
+        else
+          device:emit_event(capabilities.windowShade.windowShade("closing"))
+          device:set_field("movement_state", "closing")
+          device:set_field("transition_start_time", os.time())
+          mylogs.log(device, "info", "🔄 Closing curtain (DP1) from " .. current_level .. "% → 100% - transitional state emitted")
+          self:schedule_windowshade_pause(device, 30)  -- 30 second pause for slow blinds
+        end
       end
       
       -- Continue with standard command processing
@@ -1002,10 +1015,20 @@ local defaults = {
         window_shade_status = "partially open"  -- 1-99% = partially open regardless of reverse
       end
       
-      mylogs.log(device, "info", "📊 Emitted immediate status: " .. shade_level .. "% = " .. window_shade_status)
+      -- Always emit the shade level (actual position)
       device:emit_event(capabilities.windowShadeLevel.shadeLevel(shade_level))
-      device:emit_event(capabilities.windowShade.windowShade(window_shade_status))
       
+      -- Check if we're in a transition state within 2 seconds - don't overwrite transitional states
+      local movement_state = device:get_field("movement_state")
+      local transition_start_time = device:get_field("transition_start_time")
+      local current_time = os.time()
+      
+      if movement_state and transition_start_time and (current_time - transition_start_time) <= 2 then
+        mylogs.log(device, "info", "🔒 Level update during " .. movement_state .. " (within 2s): " .. shade_level .. "% - preserving transitional state")
+      else
+        mylogs.log(device, "info", "📊 Emitted status: " .. shade_level .. "% = " .. window_shade_status)
+        device:emit_event(capabilities.windowShade.windowShade(window_shade_status))
+      end
 
       return shade_level
     end,
@@ -1015,9 +1038,76 @@ local defaults = {
       local pref = get_child_or_parent(device, self.group).preferences
       mylogs.log(device, "debug", "to_zigbee windowShadeLevel", pref.reverse, value, utils.stringify_table(pref))
       local target_dpid = pref.moesCurtainDatapoints
-      -- mylogs.log(device, "debug", "to_zigbee windowShadeLevel target dpid", target_dpid, (100 - to_number(value)))
-      -- mylogs.log(device, "debug", "to_zigbee windowShadeLevel value", value, to_number(value))
-      -- mylogs.log(device, "debug", "to_zigbee windowShadeLevel rate", pref[self.rate_name], self.rate, get_value(pref[self.rate_name], self.rate))
+      
+      -- TRANSITIONAL STATE LOGIC - Add opening/closing states before sending command
+      local target_level = to_number(value)
+      local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 0
+      
+      -- Account for reverse preference when determining opening/closing direction
+      local is_opening, is_closing
+      -- if not pref.reverse == pref.reverseReporting then
+      --   -- When reverse=true: 0%=open, 100%=closed
+      --   -- So lower target = opening, higher target = closing
+      --   is_opening = target_level < current_level
+      --   is_closing = target_level > current_level
+      -- else
+      --   -- When reverse=false: 0%=closed, 100%=open  
+      --   -- So higher target = opening, lower target = closing
+      --   is_opening = target_level > current_level
+      --   is_closing = target_level < current_level
+      -- end
+        is_opening = target_level < current_level
+        is_closing = target_level > current_level
+      
+      if is_opening then
+        mylogs.log(device, "info", "📈 SetLevel moving from " .. current_level .. "% to " .. target_level .. "% - emitting 'opening'")
+        device:emit_event(capabilities.windowShade.windowShade("opening"))
+        device:set_field("movement_state", "opening")
+        device:set_field("transition_start_time", os.time())
+      elseif is_closing then
+        mylogs.log(device, "info", "📉 SetLevel moving from " .. current_level .. "% to " .. target_level .. "% - emitting 'closing'")
+        device:emit_event(capabilities.windowShade.windowShade("closing"))
+        device:set_field("movement_state", "closing")
+        device:set_field("transition_start_time", os.time())
+      else
+        mylogs.log(device, "info", "⏸️ SetLevel already at " .. target_level .. "% - no transition needed")
+      end
+      
+      -- Start 30-second timer like open/close commands
+      if is_opening or is_closing then
+        -- Cancel any existing pause timer
+        local existing_timer = device:get_field("state_clearing_timer")
+        if existing_timer then
+          device.thread:cancel_timer(existing_timer)
+        end
+        
+        -- Schedule new pause timer
+        local timer = device.thread:call_with_delay(30, function()
+          mylogs.log(device, "info", "⏸️ SetLevel Pause complete - clearing transitional state and setting final state")
+          
+          -- Clear movement state
+          device:set_field("movement_state", nil)
+          device:set_field("state_clearing_timer", nil)
+          device:set_field("transition_start_time", nil)
+          
+          -- Get current actual position from device state
+          local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 0
+          
+          local final_shade_status
+          if current_level == 0 then
+            final_shade_status = "open"  -- 0% = open (regardless of reverse for final state)
+          elseif current_level == 100 then
+            final_shade_status = "closed"  -- 100% = closed
+          else
+            final_shade_status = "partially open"  -- 1-99% = partially open
+          end
+          
+          mylogs.log(device, "info", "🏁 SetLevel Final state after pause: " .. current_level .. "% = " .. final_shade_status)
+          device:emit_event(capabilities.windowShade.windowShade(final_shade_status))
+        end)
+        
+        device:set_field("state_clearing_timer", timer)
+      end
       
       -- Convert STANDARD scale to device value: Input 0% = closed, 100% = open
       if not pref.reverse == pref.reverseReporting then
@@ -1112,6 +1202,76 @@ local defaults = {
       local pref = get_child_or_parent(device, self.group).preferences
       local preset_level = tonumber(pref.presetPosition) or 50  -- STANDARD scale: 0% = closed, 100% = open
       mylogs.log(device, "info", "📊 to_zigbee windowShadePreset", preset_level, value, utils.stringify_table(pref))
+
+      -- TRANSITIONAL STATE LOGIC - Add opening/closing states before sending preset command
+      local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 0
+      local target_position = preset_level
+      
+      -- -- Account for reverse preference when determining opening/closing direction
+      -- local is_opening, is_closing
+      -- if not pref.reverse == pref.reverseReporting then
+      --   -- When reverse=true: 0%=open, 100%=closed
+      --   -- So lower target = opening, higher target = closing
+      --   is_opening = target_position < current_level
+      --   is_closing = target_position > current_level
+      -- else
+      --   -- When reverse=false: 0%=closed, 100%=open  
+      --   -- So higher target = opening, lower target = closing
+      --   is_opening = target_position > current_level
+      --   is_closing = target_position < current_level
+      -- end
+      is_opening = target_position < current_level
+      is_closing = target_position > current_level      
+
+      if is_opening then
+        mylogs.log(device, "info", "📈 Preset moving from " .. current_level .. "% to " .. target_position .. "% - emitting 'opening'")
+        device:emit_event(capabilities.windowShade.windowShade("opening"))
+        device:set_field("movement_state", "opening")
+        device:set_field("transition_start_time", os.time())
+      elseif is_closing then
+        mylogs.log(device, "info", "📉 Preset moving from " .. current_level .. "% to " .. target_position .. "% - emitting 'closing'")
+        device:emit_event(capabilities.windowShade.windowShade("closing"))
+        device:set_field("movement_state", "closing")
+        device:set_field("transition_start_time", os.time())
+      else
+        mylogs.log(device, "info", "⏸️ Preset already at " .. target_position .. "% - no transition needed")
+      end
+      
+      -- Start 30-second timer like open/close commands
+      if is_opening or is_closing then
+        -- Cancel any existing pause timer
+        local existing_timer = device:get_field("state_clearing_timer")
+        if existing_timer then
+          device.thread:cancel_timer(existing_timer)
+        end
+        
+        -- Schedule new pause timer
+        local timer = device.thread:call_with_delay(30, function()
+          mylogs.log(device, "info", "⏸️ Preset Pause complete - clearing transitional state and setting final state")
+          
+          -- Clear movement state
+          device:set_field("movement_state", nil)
+          device:set_field("state_clearing_timer", nil)
+          device:set_field("transition_start_time", nil)
+          
+          -- Get current actual position from device state
+          local current_level = device:get_latest_state("main", "windowShadeLevel", "shadeLevel") or 0
+          
+          local final_shade_status
+          if current_level == 0 then
+            final_shade_status = "open"  -- 0% = open (regardless of reverse for final state)
+          elseif current_level == 100 then
+            final_shade_status = "closed"  -- 100% = closed
+          else
+            final_shade_status = "partially open"  -- 1-99% = partially open
+          end
+          
+          mylogs.log(device, "info", "🏁 Preset Final state after pause: " .. current_level .. "% = " .. final_shade_status)
+          device:emit_event(capabilities.windowShade.windowShade(final_shade_status))
+        end)
+        
+        device:set_field("state_clearing_timer", timer)
+      end
 
       -- Convert STANDARD preset to device value
       if not pref.reverse == pref.reverseReporting then
