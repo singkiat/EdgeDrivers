@@ -9,11 +9,18 @@ datapoints:
       group: 1
   # DP 8 - Status reporting ONLY (position feedback from device) - no command mapping
   - id: 8
-    command: windowShadeLevelStatus  # Different command name so it won't match outgoing commands
+    command: windowShadeLevel  # Status reports use same handler as commands
     base:
       group: 1
-  # DP 9 - Multi-command single datapoint using moesCurtainMultiCommand
+  # DP 9 - Command execution - handles outgoing setShadeLevel commands  
   - id: 9
-    command: moesCurtainMultiCommand
+    command: windowShadeLevel  # Regular windowShadeLevel handler with transition logic
     base:
       group: 1
+      rate: 100
+  - id: -9
+    command: windowShadePreset
+    base:
+      group: 1
+      name: preset_position
+      rate: 100

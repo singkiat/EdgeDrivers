@@ -48,7 +48,7 @@ preferences:
       default: error
   - name: dpWindowShadeLevelMain01
     title: WindowShade Level DP
-    description: Datapoint for window shade level reporting (typically 8)
+    description: Moes curtain uses DP9 for setShadeLevel commands (reads status from DP8)
     required: false
     preferenceType: integer
     definition:
@@ -68,10 +68,11 @@ preferences:
     title: Moes Curtain Datapoint
     description: Datapoint ID for Moes curtain control (typically 9)
     required: false
-    preferenceType: string
+    preferenceType: integer
     definition:
-      stringType: text
-      default: "9"
+      minimum: 1
+      maximum: 255
+      default: 9
   - preferenceId: presetPosition
     explicit: true
   - name: reverse
@@ -81,6 +82,13 @@ preferences:
     preferenceType: boolean
     definition:
       default: false
+  - name: reverseReporting
+    title: Reverse Reporting
+    description: Reverse the curtain direction reporting (100 - x%)
+    required: false
+    preferenceType: boolean
+    definition:
+      default: false      
 metadata:
   deviceType: Blind
   ocfDeviceType: oic.d.blind

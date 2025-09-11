@@ -15,6 +15,10 @@ datapoints:
     base:
       group: 1
       name: preset_position
+  - id: 3 # read only
+    command: windowShadeLevel
+    base:
+      group: 1
   - id: 13
     command: battery
     base:

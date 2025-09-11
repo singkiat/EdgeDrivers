@@ -1,6 +1,6 @@
 deviceLabel: Window Shade
 profiles:
-  - normal_windowShade_v1
+  - normal_windowShade_v2
 datapoints:
   - id: 1
     command: windowShade
@@ -10,12 +10,18 @@ datapoints:
     command: windowShadeLevel
     base:
       group: 1
-  - id: -2
+  - id: -2 # write only
     command: windowShadePreset
     base:
       group: 1
       name: preset_position
+      rate: 100
   - id: 3 # read only
     command: windowShadeLevel
     base:
       group: 1
+  - id: 7 # read only
+    command: windowShade
+    base:
+      group: 1
+      supported_values: [2, 0, 1, 0, 2, 1]
